@@ -1,0 +1,143 @@
+---
+title: "STAT4601-Assignment2"
+author: "Trae Smith"
+date: "2025-02-12"
+output:
+  pdf_document:
+    fig_height: 8.4
+  html_document: default
+  word_document: default
+---
+
+
+Question 1 - PCA
+
+```{r}
+library(stats)
+library(here)
+library(fastICA)
+library(tidyverse)
+set.seed(123)
+
+fpath<-file.path("C:","Users","tdthe","Downloads","My R files","STAT4601","Assignment 2", .Platform$file.sep)
+paste_red<-paste(fpath,"winequality-red.csv",sep="")
+raw_data_red<-read.csv(paste_red)
+categories<-c("Fixed Acidity","Volatile Acidity", "Citric Acid", "Residual Sugar", "Chlorides", "Free Sulfur Dioxide", "Total Sulfur Dioxide", "Density", "pH", "Sulphates", "Alcohol", "Quality")
+dataset_red<-separate(raw_data_red,col=everything(),into=categories, sep=";")
+red_data<-as.data.frame(lapply(dataset_red, as.numeric))
+pc_red<-prcomp(red_data, scale.=TRUE) #the scaled PCA 
+summary(pc_red)
+plot(pc_red,col=rainbow(12))
+
+```
+Looking at the contribution to the variance for each Principal Component, PC1 contributes to 26.01% of the variance, and PC2 adds 18.68% of it, PC3 adds 14.02%, and PC4 adds 10.13%. Everything else (from PC5 to PC12) contributes less than 10% of the variance. As such, it wouldn't add a significant amount of information to the variance of the data set, compared to the other components. 
+
+
+Question 1 - ICA
+
+```{r}
+set.seed(123)
+ic_red<-fastICA(red_data,12, verbose=TRUE)
+colorVec <- c("chartreuse2", "chocolate3", "darkslategray","goldenrod", "darkviolet", "darkblue", "firebrick4", "dodgerblue", "gray2", "seagreen3", "magenta2", "red")
+
+oldpar <- par(mfcol = c(12, 3), mar=c(1.85, 1, 1, 1)) #to chart the ica estimates, mixed signals, and the actual signals
+for(i in 1:1){
+   for(j in 1:12){
+      plot(1:1599, red_data[, j], type = "l", main = categories[j],
+           xlab = "", ylab = "",
+           lwd = 1, col = colorVec[j])
+   }
+   for(j in 1:12){
+      plot(1:1599, ic_red$X[, j], type = "l", main = "Mixed Signals",
+           xlab = "", ylab = "",
+           lwd = 1, col = colorVec[j])
+   }
+   for(j in 1:12){
+      plot(1:1599, ic_red$S[, j], type = "l", main = "ICA Estimates",
+           xlab = "", ylab = "",
+           lwd = 1, col = colorVec[j])
+   }
+}
+
+```
+
+For the ICA, the estimates are fairly close, though mixed up, and flipped upside down. Even though there's a lot of data with a lot of mixed signals, it was able to differentiate them to be fairly accurate. Similar to PCA, the first few iterations yielded a large percentage, while the others aren't as large. The First iteration got about 92.8% of the estimates, while 21.8% were obtained by iteration 2. The other iterations yielded less than 10%
+
+
+Question 2
+
+
+Since the file seems to be too great for both Gower and hierarchical clustering to process and comprehend in a neat format, I will use a sample of the data given proportional to the . 
+
+```{r}
+library(dendextend)
+library(cluster)
+library(ggplot2)
+library(dplyr)
+set.seed(123) 
+
+fpath2<-file.path("C:","Users","tdthe","Downloads","My R files","STAT4601","Assignment 2","diabetes_012_health_indicators_BRFSS2015.csv", .Platform$file.sep)
+dia_name<-paste(fpath2,"diabetes_012_health_indicators_BRFSS2015.csv",sep="")
+raw_diab<-read.csv(dia_name)
+
+raw_diab<-raw_diab|> 
+  mutate(Diabetes_012<-as.factor(Diabetes_012))
+
+prop.table(table(raw_diab$Diabetes_012)) #to ensure that the proportion of the factor levels are around the same
+
+
+
+sample_size <- 0.0004  
+
+# This is to sample the data to get 10,000 observations as well as proportional to the factor levels
+rd_sample <- raw_diab %>%
+  group_by(Diabetes_012) %>%
+  sample_frac(sample_size)
+
+prop.table(table(rd_sample$Diabetes_012)) #To ensure that the sample have similar proportions to the full data
+
+g_diab<-daisy(rd_sample, metric ="gower") #Gower's Distance
+
+gd_mat<-as.matrix(g_diab)
+#Most Similar in the sample
+raw_diab[
+which(gd_mat == min(gd_mat[gd_mat != min(gd_mat)]),
+arr.ind = TRUE)[1, ], ]
+
+#Least Similar in the sample
+raw_diab[
+which(gd_mat == max(gd_mat[gd_mat != max(gd_mat)]),
+arr.ind = TRUE)[1, ], ]
+
+gd_mat[upper.tri(gd_mat, diag = TRUE)] <- NA
+gower_diab <- as.data.frame(as.table(gd_mat))
+gower_diab <- na.omit(gower_diab)
+colnames(gower_diab) <- c("ObservationA", "ObservationB", "Distance")
+#Heatmap of the distance between each observation in the sample
+ggplot(gower_diab, aes(x = ObservationA, y = ObservationB, color = Distance)) +
+geom_point() +
+scale_color_gradient(low = "green", high = "red") +
+labs(title = "Gower Distance Between Observations",
+x = "Observation A", y = "Observation B", color = "Distance") +
+theme_minimal() + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+```
+The following output is the most and least similar of the sample taken, as well as a heat map of the sample and their differences with each other, using the Gower's distance method.It shows that there is a group that are fairly similar, but a lot of them have some distance. There are some data that are really different, which would be indicated by red, but not as much as green.  
+
+In this sample, observation 14 and 1 are the most similar, while observation 91 and 63 are the least similar
+
+
+```{r}
+set.seed(123)
+
+
+d_dist<-dist(rd_sample)
+h_diab<-hclust(d_dist, method="complete") #Hierarchical Clustering
+h_dend<-as.dendrogram(h_diab)
+plot(colour_branches(h_dend, k=7), xlab="Observation Number", ylab="Height") #Visualization with 7 color branches
+
+```
+
+
+
+The following output is a dendrogram of a hierarchical clustering method.A large part of the sample are very similar, that it would consider putting them with each other in a cluster. There are one or two that is considered by itself for quite some time before joining with a another datapoint, which also reflects to that there isn't as much data that are really different from the Gower's distance.   
